@@ -584,6 +584,19 @@
 
       This function follows every next link and combines
       the results.
+
+      FIX (see conversation): previously, if ANY page after
+      the first one failed, the whole function threw and every
+      medication already collected (including page 1) was lost,
+      because the try/catch lived around the *entire call* in
+      checkDvtProphylaxis rather than around each page fetch.
+      That silently produced "No DVT prophylaxis found" even
+      when matching medications existed on page 1.
+
+      Now: page 1 has its own try/catch. Every later page is
+      caught individually inside the loop — if a later page
+      fails, we stop paginating but KEEP everything gathered
+      so far instead of discarding it.
     */
 
     async function getAllMedicationRequests(client) {
@@ -593,10 +606,27 @@
       let page = 1;
 
 
-      let response =
-        await client.patient.request(
-          "MedicationRequest?_count=100"
+      let response;
+
+      try {
+
+        response =
+          await client.patient.request(
+            "MedicationRequest?_count=100"
+          );
+
+      }
+
+      catch (error) {
+
+        console.error(
+          "MedicationRequest first page failed:",
+          error
         );
+
+        return allMedications; // [] — nothing to salvage yet
+
+      }
 
 
       while (response) {
@@ -652,13 +682,27 @@
           by Cerner.
         */
 
-        response =
-          await client.request(
-            nextLink
+        try {
+
+          response =
+            await client.request(
+              nextLink
+            );
+
+          page++;
+
+        }
+
+        catch (error) {
+
+          console.error(
+            `Medication page ${page + 1} failed — stopping pagination, keeping ${allMedications.length} results collected so far.`,
+            error
           );
 
+          break; // keep allMedications as-is, just stop paginating
 
-        page++;
+        }
 
       }
 
@@ -702,7 +746,8 @@
           ---------------------------------
 
           This now follows Cerner's pagination
-          manually.
+          manually, and no longer loses partial
+          results if a later page fails.
         */
 
         try {
