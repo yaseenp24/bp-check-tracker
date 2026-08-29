@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>BP Check Tracker — Launch</title>
+</head>
+<body>
+  <p>Launching BP Check Tracker…</p>
+
+  <!-- FHIR client library handles the SMART on FHIR OAuth2 launch sequence -->
+  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
+  <script>
+    // This is the "launch" endpoint. Cerner calls this URL first, with
+    // ?iss=<fhir base url>&launch=<launch token> in the query string.
+    // FHIR.oauth2.authorize redirects the browser to Cerner's login/consent
+    // screen, then Cerner redirects back to index.html with an auth code.
+    FHIR.oauth2.authorize({
+      client_id: "REPLACE_WITH_YOUR_CLIENT_ID", // from Code Console after you register the app
+      scope: "patient/Observation.read patient/Patient.read launch online_access openid fhirUser",
+      redirect_uri: "./index.html"
+    });
+  </script>
+</body>
+</html>
