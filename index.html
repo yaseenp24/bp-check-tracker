@@ -68,10 +68,6 @@
       cursor: pointer;
     }
 
-    .refresh-btn:hover {
-      background: #eef1f2;
-    }
-
     .patient-name {
       padding: 10px 12px 0 12px;
       font-size: 15px;
@@ -124,8 +120,9 @@
     .status-sub {
       font-weight: 400;
       font-size: 12px;
-      opacity: 0.85;
-      margin-top: 1px;
+      opacity: 0.9;
+      margin-top: 2px;
+      line-height: 1.35;
     }
 
     .readings {
@@ -143,18 +140,16 @@
     .reading-item {
       display: flex;
       justify-content: space-between;
+      gap: 8px;
       padding: 6px 0;
       border-top: 1px solid var(--line);
       font-size: 13px;
     }
 
-    .reading-item:first-of-type {
-      border-top: none;
-    }
-
     .reading-time {
       color: var(--muted);
       font-size: 12px;
+      white-space: nowrap;
     }
 
     .empty {
@@ -186,9 +181,9 @@
 
 <body>
 
-  <div class="panel" id="panel">
+  <div class="panel">
     <div class="panel-header">
-      <h1>BP Check Tracker</h1>
+      <h1>BP Repeat Check</h1>
       <button class="refresh-btn" id="refreshBtn">Refresh</button>
     </div>
 
@@ -197,7 +192,7 @@
     </div>
   </div>
 
-  <div class="panel" id="dvtPanel">
+  <div class="panel">
     <div class="panel-header">
       <h1>DVT Prophylaxis</h1>
     </div>
@@ -210,13 +205,7 @@
   <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
 
   <script>
-    // BP-related LOINC codes
-    // 85354-9 = BP panel
-    // 8480-6 = systolic
-    // 8462-4 = diastolic
     const BP_CODES = "85354-9,8480-6,8462-4";
-
-    const REQUIRED_CHECKS_PER_DAY = 2;
 
     const DVT_DRUG_KEYWORDS = [
       "enoxaparin",
@@ -271,98 +260,108 @@
       Promise.all([
         client.patient.read(),
 
-        // Fetch BP observations first.
-        // We handle the 24-hour filtering ourselves below.
         client.patient.request(
-          `Observation?code=${BP_CODES}&_sort=-date&_count=100`
+          `Observation?code=${BP_CODES}&_sort=date&_count=100`
         )
       ])
         .then(([patient, obsBundle]) => {
-          render(patient, obsBundle);
+          renderBp(patient, obsBundle);
         })
         .catch(err => {
           contentEl.className = "error";
           contentEl.textContent =
-            "Error loading data: " + err.message;
+            "Error loading BP data: " + err.message;
         });
     }
 
-    function render(patient, obsBundle) {
+    function renderBp(patient, obsBundle) {
       const name = formatName(patient);
 
-      const entries =
-        (obsBundle.entry || []).map(entry => entry.resource);
+      const observations =
+        (obsBundle.entry || [])
+          .map(entry => entry.resource);
 
-      // Exact rolling 24-hour cutoff.
+      // For now, use the last 24 hours as the visit window.
       const cutoff =
-        Date.now() - 7 * 24 * 60 * 60 * 1000;
+        Date.now() - 24 * 60 * 60 * 1000;
 
-      const recentEntries = entries.filter(obs => {
-        const dt =
-          obs.effectiveDateTime ||
-          (
-            obs.effectivePeriod &&
-            obs.effectivePeriod.start
-          );
+      const recentObservations =
+        observations.filter(obs => {
+          const dt = getObservationDate(obs);
 
-        if (!dt) {
-          return false;
-        }
+          if (!dt) {
+            return false;
+          }
 
-        const observationTime =
-          new Date(dt).getTime();
-
-        return observationTime >= cutoff;
-      });
+          return new Date(dt).getTime() >= cutoff;
+        });
 
       const readings =
-        groupIntoReadings(recentEntries);
-
-      const count = readings.length;
+        extractBpReadings(recentObservations);
 
       let statusClass;
       let statusText;
       let statusSub;
 
-      if (count >= REQUIRED_CHECKS_PER_DAY) {
-        statusClass = "ok";
-
-        statusText =
-          `${count} BP checks in the last 24 hours`;
-
+      if (readings.length === 0) {
+        statusClass = "warn";
+        statusText = "No BP reading found";
         statusSub =
-          "Requirement met";
-      }
-
-      else if (count === 0) {
-        statusClass = "bad";
-
-        statusText =
-          `0 BP checks in the last 24 hours`;
-
-        statusSub =
-          "No readings yet — action needed";
+          "No blood pressure documented in the current 24-hour visit window.";
       }
 
       else {
-        statusClass = "warn";
+        const firstReading = readings[0];
 
-        statusText =
-          `${count} BP checks in the last 24 hours`;
+        const repeatRequired =
+          firstReading.systolic > 140 &&
+          firstReading.diastolic > 90;
 
-        const remaining =
-          REQUIRED_CHECKS_PER_DAY - count;
+        if (!repeatRequired) {
+          statusClass = "ok";
 
-        statusSub =
-          `${remaining} more reading${remaining === 1 ? "" : "s"} needed`;
+          statusText =
+            "No repeat BP required";
+
+          statusSub =
+            `Initial BP: ${firstReading.systolic}/${firstReading.diastolic} mmHg`;
+        }
+
+        else if (readings.length >= 2) {
+          const repeatReading =
+            readings[1];
+
+          statusClass = "ok";
+
+          statusText =
+            "Repeat BP completed";
+
+          statusSub =
+            `Initial BP: ${firstReading.systolic}/${firstReading.diastolic} mmHg. ` +
+            `Repeat BP: ${repeatReading.systolic}/${repeatReading.diastolic} mmHg.`;
+        }
+
+        else {
+          statusClass = "bad";
+
+          statusText =
+            "Repeat BP required";
+
+          statusSub =
+            `Initial BP: ${firstReading.systolic}/${firstReading.diastolic} mmHg. ` +
+            `No subsequent BP documented.`;
+        }
       }
 
       const readingsHtml =
         readings.length
 
-          ? readings.map(reading => `
+          ? readings.map((reading, index) => `
               <div class="reading-item">
-                <span>${reading.display}</span>
+                <span>
+                  ${index === 0 ? "Initial" : "Repeat"}:
+                  ${reading.systolic}/${reading.diastolic} mmHg
+                </span>
 
                 <span class="reading-time">
                   ${reading.time}
@@ -372,7 +371,7 @@
 
           : `
               <div class="empty">
-                No readings recorded in the last 24 hours.
+                No blood pressure readings found.
               </div>
             `;
 
@@ -403,16 +402,96 @@
 
         <div class="readings">
           <div class="readings-title">
-            Readings in the last 24 hours
+            Blood pressure readings
           </div>
 
           ${readingsHtml}
         </div>
 
         <div class="footer-note">
+          Repeat required only when initial systolic is above 140
+          AND initial diastolic is above 90.
           Demo app — sandbox data only. Not for clinical use.
         </div>
       `;
+    }
+
+    function extractBpReadings(observations) {
+      const readings = [];
+
+      observations.forEach(obs => {
+        const dt =
+          getObservationDate(obs);
+
+        if (!dt) return;
+
+        let systolic = null;
+        let diastolic = null;
+
+        // BP panel observation
+        if (obs.component && obs.component.length) {
+          obs.component.forEach(component => {
+            const codes =
+              (component.code?.coding || [])
+                .map(coding => coding.code);
+
+            if (
+              codes.includes("8480-6") &&
+              component.valueQuantity
+            ) {
+              systolic =
+                component.valueQuantity.value;
+            }
+
+            if (
+              codes.includes("8462-4") &&
+              component.valueQuantity
+            ) {
+              diastolic =
+                component.valueQuantity.value;
+            }
+          });
+        }
+
+        if (
+          systolic !== null &&
+          diastolic !== null
+        ) {
+          readings.push({
+            systolic,
+            diastolic,
+            timestamp:
+              new Date(dt).getTime(),
+
+            time:
+              new Date(dt).toLocaleTimeString(
+                [],
+                {
+                  hour: "2-digit",
+                  minute: "2-digit"
+                }
+              )
+          });
+        }
+      });
+
+      // Oldest first.
+      readings.sort(
+        (a, b) =>
+          a.timestamp - b.timestamp
+      );
+
+      return readings;
+    }
+
+    function getObservationDate(obs) {
+      return (
+        obs.effectiveDateTime ||
+        (
+          obs.effectivePeriod &&
+          obs.effectivePeriod.start
+        )
+      );
     }
 
     function loadDvtData() {
@@ -608,120 +687,6 @@
       `
         .replace(/\s+/g, " ")
         .trim();
-    }
-
-    function groupIntoReadings(observations) {
-      // Group observations into 5-minute windows
-      // so systolic + diastolic values charted together
-      // count as one BP check.
-      const buckets = new Map();
-
-      observations.forEach(obs => {
-        const dt =
-          obs.effectiveDateTime ||
-          (
-            obs.effectivePeriod &&
-            obs.effectivePeriod.start
-          );
-
-        if (!dt) return;
-
-        const timestamp =
-          new Date(dt).getTime();
-
-        const bucketKey =
-          Math.floor(
-            timestamp /
-            (5 * 60 * 1000)
-          );
-
-        const display =
-          describeObservation(obs);
-
-        const time =
-          new Date(dt)
-            .toLocaleTimeString(
-              [],
-              {
-                hour: "2-digit",
-                minute: "2-digit"
-              }
-            );
-
-        if (!buckets.has(bucketKey)) {
-          buckets.set(
-            bucketKey,
-            {
-              timestamp,
-              time,
-              parts: []
-            }
-          );
-        }
-
-        buckets
-          .get(bucketKey)
-          .parts
-          .push(display);
-      });
-
-      return Array
-        .from(buckets.values())
-        .map(bucket => ({
-          timestamp: bucket.timestamp,
-          time: bucket.time,
-          display:
-            bucket.parts.join(" / ")
-        }))
-        .sort(
-          (a, b) =>
-            b.timestamp - a.timestamp
-        );
-    }
-
-    function describeObservation(obs) {
-      // BP panel containing both systolic
-      // and diastolic components.
-      if (
-        obs.component &&
-        obs.component.length
-      ) {
-        return obs.component
-          .map(component => {
-            if (!component.valueQuantity) {
-              return "?";
-            }
-
-            const value =
-              component.valueQuantity.value;
-
-            const unit =
-              component.valueQuantity.unit || "";
-
-            return `${value} ${unit}`.trim();
-          })
-          .join(" / ");
-      }
-
-      // Individual BP observation.
-      if (obs.valueQuantity) {
-        const label =
-          (
-            obs.code &&
-            obs.code.text
-          ) ||
-          "BP";
-
-        return `
-          ${label}:
-          ${obs.valueQuantity.value}
-          ${obs.valueQuantity.unit || ""}
-        `
-          .replace(/\s+/g, " ")
-          .trim();
-      }
-
-      return "BP reading";
     }
   </script>
 
