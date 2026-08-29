@@ -210,7 +210,12 @@
   <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
 
   <script>
+    // BP-related LOINC codes
+    // 85354-9 = BP panel
+    // 8480-6 = systolic
+    // 8462-4 = diastolic
     const BP_CODES = "85354-9,8480-6,8462-4";
+
     const REQUIRED_CHECKS_PER_DAY = 2;
 
     const DVT_DRUG_KEYWORDS = [
@@ -241,6 +246,7 @@
     FHIR.oauth2.ready()
       .then(client => {
         window.smartClient = client;
+
         loadData();
         loadDvtData();
       })
@@ -265,6 +271,8 @@
       Promise.all([
         client.patient.read(),
 
+        // Fetch BP observations first.
+        // We handle the 24-hour filtering ourselves below.
         client.patient.request(
           `Observation?code=${BP_CODES}&_sort=-date&_count=100`
         )
@@ -285,10 +293,9 @@
       const entries =
         (obsBundle.entry || []).map(entry => entry.resource);
 
-      // TEMP TEST:
-      // Keep readings from the last 7 days.
+      // Exact rolling 24-hour cutoff.
       const cutoff =
-        Date.now() - 7 * 24 * 60 * 60 * 1000;
+        Date.now() - 24 * 60 * 60 * 1000;
 
       const recentEntries = entries.filter(obs => {
         const dt =
@@ -321,7 +328,7 @@
         statusClass = "ok";
 
         statusText =
-          `${count} of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 7 days`;
+          `${count} of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 24 hours`;
 
         statusSub =
           "Requirement met";
@@ -331,7 +338,7 @@
         statusClass = "bad";
 
         statusText =
-          `0 of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 7 days`;
+          `0 of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 24 hours`;
 
         statusSub =
           "No readings yet — action needed";
@@ -341,7 +348,7 @@
         statusClass = "warn";
 
         statusText =
-          `${count} of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 7 days`;
+          `${count} of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 24 hours`;
 
         const remaining =
           REQUIRED_CHECKS_PER_DAY - count;
@@ -356,6 +363,7 @@
           ? readings.map(reading => `
               <div class="reading-item">
                 <span>${reading.display}</span>
+
                 <span class="reading-time">
                   ${reading.time}
                 </span>
@@ -364,7 +372,7 @@
 
           : `
               <div class="empty">
-                No readings recorded in the last 7 days.
+                No readings recorded in the last 24 hours.
               </div>
             `;
 
@@ -395,7 +403,7 @@
 
         <div class="readings">
           <div class="readings-title">
-            Readings in the last 7 days
+            Readings in the last 24 hours
           </div>
 
           ${readingsHtml}
@@ -597,10 +605,15 @@
       return `
         ${given}
         ${name.family || ""}
-      `.trim();
+      `
+        .replace(/\s+/g, " ")
+        .trim();
     }
 
     function groupIntoReadings(observations) {
+      // Group observations into 5-minute windows
+      // so systolic + diastolic values charted together
+      // count as one BP check.
       const buckets = new Map();
 
       observations.forEach(obs => {
@@ -667,6 +680,8 @@
     }
 
     function describeObservation(obs) {
+      // BP panel containing both systolic
+      // and diastolic components.
       if (
         obs.component &&
         obs.component.length
@@ -688,6 +703,7 @@
           .join(" / ");
       }
 
+      // Individual BP observation.
       if (obs.valueQuantity) {
         const label =
           (
