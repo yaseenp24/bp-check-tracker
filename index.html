@@ -125,7 +125,6 @@
       Reviewing blood pressure follow-up and DVT prophylaxis documentation.
     </div>
 
-    <!-- Blood Pressure Card -->
     <div class="card">
 
       <h2>Blood Pressure Follow-Up</h2>
@@ -141,7 +140,6 @@
 
     </div>
 
-    <!-- DVT Card -->
     <div class="card">
 
       <h2>DVT Prophylaxis</h2>
@@ -161,73 +159,33 @@
 
   <script>
 
-    /*
-      ------------------------------------------------------
-      BLOOD PRESSURE CONFIGURATION
-      ------------------------------------------------------
-    */
-
     const BP_CODES = "85354-9,8480-6,8462-4";
 
 
-    /*
-      ------------------------------------------------------
-      DVT / ANTICOAGULANT MEDICATIONS
-      ------------------------------------------------------
-
-      For this sandbox prototype, the app checks for
-      medication names containing any of these keywords.
-
-      IMPORTANT:
-      In production, a medication being present does not
-      automatically prove that a hospital's specific VTE
-      prophylaxis measure has been satisfied.
-
-      Eventually we should also consider:
-
-      - current encounter
-      - dose
-      - route
-      - timing
-      - indication
-      - medication status
-    */
-
     const DVT_DRUG_KEYWORDS = [
 
-      // Unfractionated heparin
       "heparin",
 
-      // Low-molecular-weight heparins
       "enoxaparin",
       "lovenox",
 
       "dalteparin",
       "fragmin",
 
-      // Factor Xa inhibitor
       "fondaparinux",
       "arixtra",
 
-      // Direct oral anticoagulants
       "rivaroxaban",
       "xarelto",
 
       "apixaban",
       "eliquis",
 
-      // Vitamin K antagonist
       "warfarin",
       "coumadin"
 
     ];
 
-
-    /*
-      ------------------------------------------------------
-      MECHANICAL DVT PROPHYLAXIS
-      ------------------------------------------------------
-    */
 
     const MECHANICAL_KEYWORDS = [
 
@@ -238,12 +196,6 @@
 
     ];
 
-
-    /*
-      ------------------------------------------------------
-      START SMART APP
-      ------------------------------------------------------
-    */
 
     FHIR.oauth2.ready()
 
@@ -300,32 +252,6 @@
       });
 
 
-    /*
-      ------------------------------------------------------
-      BLOOD PRESSURE CHECK
-      ------------------------------------------------------
-
-      Current rule:
-
-      Look at the FIRST BP during the evaluation window.
-
-      If:
-
-          systolic > 140
-                  AND
-          diastolic > 90
-
-      then another BP must be documented afterward.
-
-      The repeat BP value itself does NOT matter.
-
-      NOTE:
-      We are currently using the previous 24 hours as our
-      temporary sandbox window.
-
-      Production version should use the current encounter.
-    */
-
     async function checkBloodPressure(client) {
 
       const statusElement =
@@ -344,13 +270,9 @@
           );
 
 
-        const observations = getBundleResources(response);
+        const observations =
+          getBundleResources(response);
 
-
-        /*
-          Filter locally instead of relying on Cerner's
-          server-side date parameter.
-        */
 
         const cutoff =
           Date.now() -
@@ -395,10 +317,6 @@
         }
 
 
-        /*
-          Readings are sorted oldest -> newest.
-        */
-
         const firstReading =
           readings[0];
 
@@ -410,11 +328,6 @@
           firstReading.diastolic > 90;
 
 
-        /*
-          CASE 1:
-          Initial BP does NOT meet both thresholds.
-        */
-
         if (!repeatRequired) {
 
           statusElement.className =
@@ -425,13 +338,6 @@
 
         }
 
-
-        /*
-          CASE 2:
-          Initial BP is high AND at least one later
-          BP exists.
-        */
-
         else if (readings.length >= 2) {
 
           statusElement.className =
@@ -441,12 +347,6 @@
             "Repeat BP completed.";
 
         }
-
-
-        /*
-          CASE 3:
-          Initial BP is high and there is no later BP.
-        */
 
         else {
 
@@ -483,19 +383,6 @@
 
     }
 
-
-    /*
-      ------------------------------------------------------
-      EXTRACT BP READINGS
-      ------------------------------------------------------
-
-      Each BP panel Observation is treated as its own
-      blood-pressure event.
-
-      We DO NOT combine observations using a 5-minute
-      bucket because that could accidentally combine
-      an initial BP and a true repeat BP.
-    */
 
     function extractBpReadings(observations) {
 
@@ -537,10 +424,6 @@
                 );
 
 
-              /*
-                Systolic
-              */
-
               if (
 
                 codes.includes("8480-6") &&
@@ -556,10 +439,6 @@
 
               }
 
-
-              /*
-                Diastolic
-              */
 
               if (
 
@@ -580,10 +459,6 @@
 
         }
 
-
-        /*
-          Only count complete BP panels.
-        */
 
         if (
 
@@ -616,10 +491,6 @@
       });
 
 
-      /*
-        Oldest reading first.
-      */
-
       readings.sort(
         (a, b) =>
           a.timestamp -
@@ -631,12 +502,6 @@
 
     }
 
-
-    /*
-      ------------------------------------------------------
-      DISPLAY BP READINGS
-      ------------------------------------------------------
-    */
 
     function displayBpReadings(
       readings,
@@ -701,12 +566,6 @@
     }
 
 
-    /*
-      ------------------------------------------------------
-      OBSERVATION DATE
-      ------------------------------------------------------
-    */
-
     function getObservationDate(obs) {
 
       return (
@@ -723,12 +582,6 @@
     }
 
 
-    /*
-      ------------------------------------------------------
-      DVT PROPHYLAXIS CHECK
-      ------------------------------------------------------
-    */
-
     async function checkDvtProphylaxis(client) {
 
       const statusElement =
@@ -744,41 +597,89 @@
 
       try {
 
+        let medications = [];
+
+        let serviceRequests = [];
+
+
         /*
-          Retrieve medication orders and procedure/service
-          orders separately.
+          MEDICATION REQUESTS
+
+          If this succeeds, we can still detect
+          anticoagulants even if ServiceRequest fails.
         */
 
-        const [
-          medicationResponse,
-          serviceResponse
-        ] = await Promise.all([
+        try {
 
-          client.patient.request(
-            "MedicationRequest?_count=100"
-          ),
-
-          client.patient.request(
-            "ServiceRequest?_count=100"
-          )
-
-        ]);
+          const medicationResponse =
+            await client.patient.request(
+              "MedicationRequest?_count=100"
+            );
 
 
-        const medications =
-          getBundleResources(
-            medicationResponse
+          medications =
+            getBundleResources(
+              medicationResponse
+            );
+
+
+          console.log(
+            "MedicationRequests:",
+            medications
           );
 
+        }
 
-        const serviceRequests =
-          getBundleResources(
-            serviceResponse
+        catch (error) {
+
+          console.error(
+            "MedicationRequest error:",
+            error
           );
+
+        }
 
 
         /*
-          Find matching anticoagulant medications.
+          SERVICE REQUESTS
+
+          This is kept separate so a ServiceRequest
+          failure does not kill the medication check.
+        */
+
+        try {
+
+          const serviceResponse =
+            await client.patient.request(
+              "ServiceRequest?_count=100"
+            );
+
+
+          serviceRequests =
+            getBundleResources(
+              serviceResponse
+            );
+
+
+          console.log(
+            "ServiceRequests:",
+            serviceRequests
+          );
+
+        }
+
+        catch (error) {
+
+          console.warn(
+            "ServiceRequest unavailable:",
+            error
+          );
+
+        }
+
+
+        /*
+          MATCH MEDICATIONS
         */
 
         const matchingMedications =
@@ -792,16 +693,25 @@
                 ).toLowerCase();
 
 
-              return DVT_DRUG_KEYWORDS.some(
-                keyword =>
-                  text.includes(keyword)
+              console.log(
+                "Checking medication:",
+                text
               );
 
-            });
+
+              return DVT_DRUG_KEYWORDS.some(
+                keyword =>
+                  text.includes(
+                    keyword.toLowerCase()
+                  )
+              );
+
+            }
+          );
 
 
         /*
-          Find mechanical prophylaxis orders.
+          MATCH MECHANICAL PROPHYLAXIS
         */
 
         const matchingMechanicalOrders =
@@ -817,14 +727,29 @@
 
               return MECHANICAL_KEYWORDS.some(
                 keyword =>
-                  text.includes(keyword)
+                  text.includes(
+                    keyword.toLowerCase()
+                  )
               );
 
-            });
+            }
+          );
+
+
+        console.log(
+          "Matching anticoagulants:",
+          matchingMedications
+        );
+
+
+        console.log(
+          "Matching mechanical orders:",
+          matchingMechanicalOrders
+        );
 
 
         /*
-          Something qualifying was found.
+          RESULT
         */
 
         if (
@@ -884,22 +809,12 @@
     }
 
 
-    /*
-      ------------------------------------------------------
-      MEDICATION TEXT
-      ------------------------------------------------------
-    */
-
     function getMedicationText(
       medicationRequest
     ) {
 
       const pieces = [];
 
-
-      /*
-        Main medication text.
-      */
 
       if (
         medicationRequest
@@ -917,10 +832,6 @@
 
       }
 
-
-      /*
-        Coding displays.
-      */
 
       const coding =
 
@@ -941,10 +852,6 @@
 
       });
 
-
-      /*
-        Dosage text can sometimes include brand names.
-      */
 
       const dosage =
 
@@ -992,12 +899,6 @@
     }
 
 
-    /*
-      ------------------------------------------------------
-      SERVICE REQUEST TEXT
-      ------------------------------------------------------
-    */
-
     function getServiceRequestText(
       serviceRequest
     ) {
@@ -1040,12 +941,6 @@
     }
 
 
-    /*
-      ------------------------------------------------------
-      DISPLAY DVT RESULTS
-      ------------------------------------------------------
-    */
-
     function displayDvtResults(
 
       medications,
@@ -1059,10 +954,6 @@
       container.innerHTML = "";
 
 
-      /*
-        Display matching medications.
-      */
-
       if (medications.length > 0) {
 
         const heading =
@@ -1073,6 +964,7 @@
 
         heading.innerHTML =
           "<strong>Anticoagulant medication found:</strong>";
+
 
         container.appendChild(
           heading
@@ -1123,10 +1015,6 @@
       }
 
 
-      /*
-        Display matching mechanical prophylaxis.
-      */
-
       if (
         mechanicalOrders.length > 0
       ) {
@@ -1142,6 +1030,7 @@
 
         heading.innerHTML =
           "<strong>Mechanical prophylaxis found:</strong>";
+
 
         container.appendChild(
           heading
@@ -1171,10 +1060,6 @@
       }
 
 
-      /*
-        Nothing found.
-      */
-
       if (
 
         medications.length === 0 &&
@@ -1199,22 +1084,12 @@
     }
 
 
-    /*
-      ------------------------------------------------------
-      FHIR BUNDLE HELPER
-      ------------------------------------------------------
-    */
-
     function getBundleResources(response) {
 
       if (!response) {
         return [];
       }
 
-
-      /*
-        Standard FHIR Bundle.
-      */
 
       if (
         response.resourceType ===
@@ -1235,11 +1110,6 @@
 
       }
 
-
-      /*
-        fhirclient can sometimes return arrays depending
-        on request configuration.
-      */
 
       if (Array.isArray(response)) {
 
