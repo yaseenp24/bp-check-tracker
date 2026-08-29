@@ -1,693 +1,1257 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>BP Check Tracker</title>
+  <meta charset="UTF-8" />
+
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <title>Clinical Compliance Assistant</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
 
   <style>
-    :root {
-      --ink: #1c2b33;
-      --muted: #5b6b73;
-      --line: #dde3e6;
-      --bg: #f7f9fa;
-      --panel: #ffffff;
-      --ok: #1e7d4f;
-      --ok-bg: #e9f7ef;
-      --warn: #a45c00;
-      --warn-bg: #fdf1de;
-      --bad: #b3261e;
-      --bad-bg: #fbe9e7;
-    }
-
     * {
       box-sizing: border-box;
     }
 
     body {
       margin: 0;
-      background: var(--bg);
-      color: var(--ink);
-      font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
-      font-size: 14px;
-      width: 320px;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f4f6f8;
+      color: #1f2937;
     }
 
-    .panel {
-      border: 1px solid var(--line);
-      border-radius: 6px;
-      background: var(--panel);
-      margin: 10px;
-      overflow: hidden;
+    .container {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px;
     }
 
-    .panel-header {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--line);
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+    h1 {
+      margin-bottom: 8px;
     }
 
-    .panel-header h1 {
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin: 0;
+    .subtitle {
+      color: #6b7280;
+      margin-bottom: 30px;
     }
 
-    .refresh-btn {
-      border: 1px solid var(--line);
-      background: var(--bg);
-      color: var(--muted);
-      font-size: 11px;
-      padding: 3px 8px;
-      border-radius: 4px;
-      cursor: pointer;
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
     }
 
-    .patient-name {
-      padding: 10px 12px 0 12px;
-      font-size: 15px;
-      font-weight: 600;
+    .card h2 {
+      margin-top: 0;
+      margin-bottom: 16px;
     }
 
-    .patient-sub {
-      padding: 2px 12px 10px 12px;
-      font-size: 12px;
-      color: var(--muted);
+    .status {
+      padding: 14px 16px;
+      border-radius: 8px;
+      font-weight: bold;
+      margin-bottom: 16px;
     }
 
-    .status-row {
-      margin: 0 12px 12px 12px;
-      padding: 10px 12px;
-      border-radius: 6px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
+    .status.success {
+      background: #dcfce7;
+      color: #166534;
     }
 
-    .status-row.ok {
-      background: var(--ok-bg);
-      color: var(--ok);
+    .status.warning {
+      background: #fef3c7;
+      color: #92400e;
     }
 
-    .status-row.warn {
-      background: var(--warn-bg);
-      color: var(--warn);
+    .status.danger {
+      background: #fee2e2;
+      color: #991b1b;
     }
 
-    .status-row.bad {
-      background: var(--bad-bg);
-      color: var(--bad);
+    .status.loading {
+      background: #e0f2fe;
+      color: #075985;
     }
 
-    .status-dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      flex-shrink: 0;
-      background: currentColor;
+    .reading {
+      border-top: 1px solid #e5e7eb;
+      padding: 12px 0;
     }
 
-    .status-text {
-      font-weight: 600;
-      font-size: 13px;
+    .reading:first-child {
+      border-top: none;
     }
 
-    .status-sub {
-      font-weight: 400;
-      font-size: 12px;
-      opacity: 0.9;
-      margin-top: 2px;
-      line-height: 1.35;
-    }
-
-    .readings {
-      padding: 0 12px 12px 12px;
-    }
-
-    .readings-title {
-      font-size: 11px;
-      text-transform: uppercase;
-      letter-spacing: 0.03em;
-      color: var(--muted);
-      margin-bottom: 6px;
-    }
-
-    .reading-item {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-      padding: 6px 0;
-      border-top: 1px solid var(--line);
-      font-size: 13px;
+    .reading-label {
+      font-weight: bold;
     }
 
     .reading-time {
-      color: var(--muted);
-      font-size: 12px;
-      white-space: nowrap;
+      color: #6b7280;
+      font-size: 14px;
+      margin-top: 4px;
     }
 
-    .empty {
-      padding: 8px 0;
-      color: var(--muted);
-      font-size: 13px;
+    .medication {
+      border-top: 1px solid #e5e7eb;
+      padding: 10px 0;
     }
 
-    .footer-note {
-      padding: 8px 12px;
-      font-size: 11px;
-      color: var(--muted);
-      border-top: 1px solid var(--line);
-      background: var(--bg);
+    .medication:first-child {
+      border-top: none;
     }
 
-    .loading,
-    .error {
-      padding: 20px 12px;
-      font-size: 13px;
-      color: var(--muted);
-    }
-
-    .error {
-      color: var(--bad);
+    .small-text {
+      color: #6b7280;
+      font-size: 14px;
+      line-height: 1.5;
     }
   </style>
 </head>
 
 <body>
 
-  <div class="panel">
-    <div class="panel-header">
-      <h1>BP Repeat Check</h1>
-      <button class="refresh-btn" id="refreshBtn">Refresh</button>
+  <div class="container">
+
+    <h1>Clinical Compliance Assistant</h1>
+
+    <div class="subtitle">
+      Reviewing blood pressure follow-up and DVT prophylaxis documentation.
     </div>
 
-    <div id="content" class="loading">
-      Loading patient data…
+    <!-- Blood Pressure Card -->
+    <div class="card">
+
+      <h2>Blood Pressure Follow-Up</h2>
+
+      <div
+        id="bp-status"
+        class="status loading"
+      >
+        Checking blood pressure readings...
+      </div>
+
+      <div id="bp-readings"></div>
+
     </div>
+
+    <!-- DVT Card -->
+    <div class="card">
+
+      <h2>DVT Prophylaxis</h2>
+
+      <div
+        id="dvt-status"
+        class="status loading"
+      >
+        Checking DVT prophylaxis...
+      </div>
+
+      <div id="dvt-results"></div>
+
+    </div>
+
   </div>
-
-  <div class="panel">
-    <div class="panel-header">
-      <h1>DVT Prophylaxis</h1>
-    </div>
-
-    <div id="dvtContent" class="loading">
-      Loading medication data…
-    </div>
-  </div>
-
-  <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
 
   <script>
+
+    /*
+      ------------------------------------------------------
+      BLOOD PRESSURE CONFIGURATION
+      ------------------------------------------------------
+    */
+
     const BP_CODES = "85354-9,8480-6,8462-4";
 
+
+    /*
+      ------------------------------------------------------
+      DVT / ANTICOAGULANT MEDICATIONS
+      ------------------------------------------------------
+
+      For this sandbox prototype, the app checks for
+      medication names containing any of these keywords.
+
+      IMPORTANT:
+      In production, a medication being present does not
+      automatically prove that a hospital's specific VTE
+      prophylaxis measure has been satisfied.
+
+      Eventually we should also consider:
+
+      - current encounter
+      - dose
+      - route
+      - timing
+      - indication
+      - medication status
+    */
+
     const DVT_DRUG_KEYWORDS = [
+
+      // Unfractionated heparin
+      "heparin",
+
+      // Low-molecular-weight heparins
       "enoxaparin",
       "lovenox",
-      "heparin",
+
+      "dalteparin",
+      "fragmin",
+
+      // Factor Xa inhibitor
       "fondaparinux",
       "arixtra",
-      "dalteparin",
-      "fragmin"
+
+      // Direct oral anticoagulants
+      "rivaroxaban",
+      "xarelto",
+
+      "apixaban",
+      "eliquis",
+
+      // Vitamin K antagonist
+      "warfarin",
+      "coumadin"
+
     ];
 
+
+    /*
+      ------------------------------------------------------
+      MECHANICAL DVT PROPHYLAXIS
+      ------------------------------------------------------
+    */
+
     const MECHANICAL_KEYWORDS = [
+
       "sequential compression",
       "scd",
       "compression device",
       "compression stocking"
+
     ];
 
-    const contentEl = document.getElementById("content");
-    const dvtContentEl = document.getElementById("dvtContent");
 
-    document.getElementById("refreshBtn").addEventListener("click", () => {
-      loadData();
-      loadDvtData();
-    });
+    /*
+      ------------------------------------------------------
+      START SMART APP
+      ------------------------------------------------------
+    */
 
     FHIR.oauth2.ready()
-      .then(client => {
-        window.smartClient = client;
 
-        loadData();
-        loadDvtData();
+      .then(async client => {
+
+        console.log(
+          "Patient ID:",
+          client.patient.id
+        );
+
+        console.log(
+          "Encounter ID:",
+          client.encounter
+            ? client.encounter.id
+            : "No encounter context"
+        );
+
+
+        await Promise.all([
+
+          checkBloodPressure(client),
+
+          checkDvtProphylaxis(client)
+
+        ]);
+
       })
-      .catch(err => {
-        contentEl.className = "error";
-        contentEl.textContent =
-          "Could not connect: " + err.message;
 
-        dvtContentEl.className = "error";
-        dvtContentEl.textContent =
-          "Could not connect: " + err.message;
+      .catch(error => {
+
+        console.error(
+          "SMART launch error:",
+          error
+        );
+
+        document.getElementById(
+          "bp-status"
+        ).className = "status danger";
+
+        document.getElementById(
+          "bp-status"
+        ).textContent =
+          "Unable to load patient data.";
+
+        document.getElementById(
+          "dvt-status"
+        ).className = "status danger";
+
+        document.getElementById(
+          "dvt-status"
+        ).textContent =
+          "Unable to load patient data.";
+
       });
 
-    function loadData() {
-      const client = window.smartClient;
 
-      if (!client) return;
+    /*
+      ------------------------------------------------------
+      BLOOD PRESSURE CHECK
+      ------------------------------------------------------
 
-      contentEl.className = "loading";
-      contentEl.textContent = "Loading patient data…";
+      Current rule:
 
-      Promise.all([
-        client.patient.read(),
+      Look at the FIRST BP during the evaluation window.
 
-        client.patient.request(
-          `Observation?code=${BP_CODES}&_sort=date&_count=100`
-        )
-      ])
-        .then(([patient, obsBundle]) => {
-          renderBp(patient, obsBundle);
-        })
-        .catch(err => {
-          contentEl.className = "error";
-          contentEl.textContent =
-            "Error loading BP data: " + err.message;
-        });
-    }
+      If:
 
-    function renderBp(patient, obsBundle) {
-      const name = formatName(patient);
+          systolic > 140
+                  AND
+          diastolic > 90
 
-      const observations =
-        (obsBundle.entry || [])
-          .map(entry => entry.resource);
+      then another BP must be documented afterward.
 
-      // For now, use the last 24 hours as the visit window.
-      const cutoff =
-        Date.now() - 24 * 60 * 60 * 1000;
+      The repeat BP value itself does NOT matter.
 
-      const recentObservations =
-        observations.filter(obs => {
-          const dt = getObservationDate(obs);
+      NOTE:
+      We are currently using the previous 24 hours as our
+      temporary sandbox window.
 
-          if (!dt) {
-            return false;
-          }
+      Production version should use the current encounter.
+    */
 
-          return new Date(dt).getTime() >= cutoff;
-        });
+    async function checkBloodPressure(client) {
 
-      const readings =
-        extractBpReadings(recentObservations);
+      const statusElement =
+        document.getElementById("bp-status");
 
-      let statusClass;
-      let statusText;
-      let statusSub;
+      const readingsElement =
+        document.getElementById("bp-readings");
 
-      if (readings.length === 0) {
-        statusClass = "warn";
-        statusText = "No BP reading found";
-        statusSub =
-          "No blood pressure documented in the current 24-hour visit window.";
-      }
+      try {
 
-      else {
-        const firstReading = readings[0];
+        const response =
+          await client.patient.request(
+
+            `Observation?code=${BP_CODES}&_sort=-date&_count=100`
+
+          );
+
+
+        const observations = getBundleResources(response);
+
+
+        /*
+          Filter locally instead of relying on Cerner's
+          server-side date parameter.
+        */
+
+        const cutoff =
+          Date.now() -
+          24 * 60 * 60 * 1000;
+
+
+        const recentObservations =
+          observations.filter(obs => {
+
+            const dt =
+              getObservationDate(obs);
+
+            if (!dt) {
+              return false;
+            }
+
+            return (
+              new Date(dt).getTime() >= cutoff
+            );
+
+          });
+
+
+        const readings =
+          extractBpReadings(
+            recentObservations
+          );
+
+
+        if (readings.length === 0) {
+
+          statusElement.className =
+            "status warning";
+
+          statusElement.textContent =
+            "No BP reading found in the last 24 hours.";
+
+          readingsElement.innerHTML = "";
+
+          return;
+
+        }
+
+
+        /*
+          Readings are sorted oldest -> newest.
+        */
+
+        const firstReading =
+          readings[0];
+
 
         const repeatRequired =
+
           firstReading.systolic > 140 &&
+
           firstReading.diastolic > 90;
 
+
+        /*
+          CASE 1:
+          Initial BP does NOT meet both thresholds.
+        */
+
         if (!repeatRequired) {
-          statusClass = "ok";
 
-          statusText =
-            "No repeat BP required";
+          statusElement.className =
+            "status success";
 
-          statusSub =
-            `Initial BP: ${firstReading.systolic}/${firstReading.diastolic} mmHg`;
+          statusElement.textContent =
+            "No repeat BP required.";
+
         }
+
+
+        /*
+          CASE 2:
+          Initial BP is high AND at least one later
+          BP exists.
+        */
 
         else if (readings.length >= 2) {
-          const repeatReading =
-            readings[1];
 
-          statusClass = "ok";
+          statusElement.className =
+            "status success";
 
-          statusText =
-            "Repeat BP completed";
+          statusElement.textContent =
+            "Repeat BP completed.";
 
-          statusSub =
-            `Initial BP: ${firstReading.systolic}/${firstReading.diastolic} mmHg. ` +
-            `Repeat BP: ${repeatReading.systolic}/${repeatReading.diastolic} mmHg.`;
         }
+
+
+        /*
+          CASE 3:
+          Initial BP is high and there is no later BP.
+        */
 
         else {
-          statusClass = "bad";
 
-          statusText =
-            "Repeat BP required";
+          statusElement.className =
+            "status danger";
 
-          statusSub =
-            `Initial BP: ${firstReading.systolic}/${firstReading.diastolic} mmHg. ` +
-            `No subsequent BP documented.`;
+          statusElement.textContent =
+            "Repeat BP required.";
+
         }
+
+
+        displayBpReadings(
+          readings,
+          readingsElement
+        );
+
       }
 
-      const readingsHtml =
-        readings.length
+      catch (error) {
 
-          ? readings.map((reading, index) => `
-              <div class="reading-item">
-                <span>
-                  ${index === 0 ? "Initial" : "Repeat"}:
-                  ${reading.systolic}/${reading.diastolic} mmHg
-                </span>
+        console.error(
+          "BP error:",
+          error
+        );
 
-                <span class="reading-time">
-                  ${reading.time}
-                </span>
-              </div>
-            `).join("")
+        statusElement.className =
+          "status danger";
 
-          : `
-              <div class="empty">
-                No blood pressure readings found.
-              </div>
-            `;
+        statusElement.textContent =
+          "Unable to retrieve blood pressure data.";
 
-      contentEl.className = "";
+      }
 
-      contentEl.innerHTML = `
-        <div class="patient-name">
-          ${name}
-        </div>
-
-        <div class="patient-sub">
-          MRN: ${patient.id}
-        </div>
-
-        <div class="status-row ${statusClass}">
-          <span class="status-dot"></span>
-
-          <div>
-            <div class="status-text">
-              ${statusText}
-            </div>
-
-            <div class="status-sub">
-              ${statusSub}
-            </div>
-          </div>
-        </div>
-
-        <div class="readings">
-          <div class="readings-title">
-            Blood pressure readings
-          </div>
-
-          ${readingsHtml}
-        </div>
-
-        <div class="footer-note">
-          Repeat required only when initial systolic is above 140
-          AND initial diastolic is above 90.
-          Demo app — sandbox data only. Not for clinical use.
-        </div>
-      `;
     }
 
+
+    /*
+      ------------------------------------------------------
+      EXTRACT BP READINGS
+      ------------------------------------------------------
+
+      Each BP panel Observation is treated as its own
+      blood-pressure event.
+
+      We DO NOT combine observations using a 5-minute
+      bucket because that could accidentally combine
+      an initial BP and a true repeat BP.
+    */
+
     function extractBpReadings(observations) {
+
       const readings = [];
 
+
       observations.forEach(obs => {
+
         const dt =
           getObservationDate(obs);
 
-        if (!dt) return;
 
-        let systolic = null;
-        let diastolic = null;
-
-        // BP panel observation
-        if (obs.component && obs.component.length) {
-          obs.component.forEach(component => {
-            const codes =
-              (component.code?.coding || [])
-                .map(coding => coding.code);
-
-            if (
-              codes.includes("8480-6") &&
-              component.valueQuantity
-            ) {
-              systolic =
-                component.valueQuantity.value;
-            }
-
-            if (
-              codes.includes("8462-4") &&
-              component.valueQuantity
-            ) {
-              diastolic =
-                component.valueQuantity.value;
-            }
-          });
+        if (!dt) {
+          return;
         }
 
+
+        let systolic = null;
+
+        let diastolic = null;
+
+
         if (
-          systolic !== null &&
-          diastolic !== null
+          obs.component &&
+          obs.component.length
         ) {
+
+          obs.component.forEach(
+            component => {
+
+              const codes =
+
+                (
+                  component.code?.coding || []
+                )
+
+                .map(
+                  coding => coding.code
+                );
+
+
+              /*
+                Systolic
+              */
+
+              if (
+
+                codes.includes("8480-6") &&
+
+                component.valueQuantity
+
+              ) {
+
+                systolic =
+                  component
+                    .valueQuantity
+                    .value;
+
+              }
+
+
+              /*
+                Diastolic
+              */
+
+              if (
+
+                codes.includes("8462-4") &&
+
+                component.valueQuantity
+
+              ) {
+
+                diastolic =
+                  component
+                    .valueQuantity
+                    .value;
+
+              }
+
+            });
+
+        }
+
+
+        /*
+          Only count complete BP panels.
+        */
+
+        if (
+
+          systolic !== null &&
+
+          diastolic !== null
+
+        ) {
+
           readings.push({
+
             systolic,
+
             diastolic,
+
             timestamp:
               new Date(dt).getTime(),
 
+            date:
+              new Date(dt),
+
             time:
-              new Date(dt).toLocaleTimeString(
-                [],
-                {
-                  hour: "2-digit",
-                  minute: "2-digit"
-                }
-              )
+              new Date(dt)
+                .toLocaleString()
+
           });
+
         }
+
       });
 
-      // Oldest first.
+
+      /*
+        Oldest reading first.
+      */
+
       readings.sort(
         (a, b) =>
-          a.timestamp - b.timestamp
+          a.timestamp -
+          b.timestamp
       );
 
+
       return readings;
+
     }
 
+
+    /*
+      ------------------------------------------------------
+      DISPLAY BP READINGS
+      ------------------------------------------------------
+    */
+
+    function displayBpReadings(
+      readings,
+      container
+    ) {
+
+      container.innerHTML = "";
+
+
+      readings.forEach(
+        (reading, index) => {
+
+          const div =
+            document.createElement("div");
+
+          div.className =
+            "reading";
+
+
+          let label =
+            "Additional BP";
+
+
+          if (index === 0) {
+
+            label =
+              "Initial BP";
+
+          }
+
+          else if (index === 1) {
+
+            label =
+              "Repeat BP";
+
+          }
+
+
+          div.innerHTML = `
+
+            <div class="reading-label">
+
+              ${label}:
+              ${reading.systolic}/${reading.diastolic}
+              mmHg
+
+            </div>
+
+            <div class="reading-time">
+
+              ${reading.time}
+
+            </div>
+
+          `;
+
+
+          container.appendChild(div);
+
+        });
+
+    }
+
+
+    /*
+      ------------------------------------------------------
+      OBSERVATION DATE
+      ------------------------------------------------------
+    */
+
     function getObservationDate(obs) {
+
       return (
+
         obs.effectiveDateTime ||
+
         (
           obs.effectivePeriod &&
           obs.effectivePeriod.start
         )
+
       );
+
     }
 
-    function loadDvtData() {
-      const client = window.smartClient;
 
-      if (!client) return;
+    /*
+      ------------------------------------------------------
+      DVT PROPHYLAXIS CHECK
+      ------------------------------------------------------
+    */
 
-      dvtContentEl.className = "loading";
-      dvtContentEl.textContent =
-        "Loading medication data…";
+    async function checkDvtProphylaxis(client) {
 
-      Promise.all([
-        client.patient
-          .request(`MedicationRequest?_count=50`)
-          .catch(() => ({
-            entry: []
-          })),
+      const statusElement =
+        document.getElementById(
+          "dvt-status"
+        );
 
-        client.patient
-          .request(`ServiceRequest?_count=50`)
-          .catch(() => ({
-            entry: []
-          }))
-      ])
-        .then(([medBundle, srBundle]) => {
-          renderDvt(
-            medBundle,
-            srBundle
+      const resultsElement =
+        document.getElementById(
+          "dvt-results"
+        );
+
+
+      try {
+
+        /*
+          Retrieve medication orders and procedure/service
+          orders separately.
+        */
+
+        const [
+          medicationResponse,
+          serviceResponse
+        ] = await Promise.all([
+
+          client.patient.request(
+            "MedicationRequest?_count=100"
+          ),
+
+          client.patient.request(
+            "ServiceRequest?_count=100"
+          )
+
+        ]);
+
+
+        const medications =
+          getBundleResources(
+            medicationResponse
           );
-        })
-        .catch(err => {
-          dvtContentEl.className = "error";
 
-          dvtContentEl.textContent =
-            "Error loading medication data: " +
-            err.message;
-        });
+
+        const serviceRequests =
+          getBundleResources(
+            serviceResponse
+          );
+
+
+        /*
+          Find matching anticoagulant medications.
+        */
+
+        const matchingMedications =
+
+          medications.filter(
+            medication => {
+
+              const text =
+                getMedicationText(
+                  medication
+                ).toLowerCase();
+
+
+              return DVT_DRUG_KEYWORDS.some(
+                keyword =>
+                  text.includes(keyword)
+              );
+
+            });
+
+
+        /*
+          Find mechanical prophylaxis orders.
+        */
+
+        const matchingMechanicalOrders =
+
+          serviceRequests.filter(
+            request => {
+
+              const text =
+                getServiceRequestText(
+                  request
+                ).toLowerCase();
+
+
+              return MECHANICAL_KEYWORDS.some(
+                keyword =>
+                  text.includes(keyword)
+              );
+
+            });
+
+
+        /*
+          Something qualifying was found.
+        */
+
+        if (
+
+          matchingMedications.length > 0 ||
+
+          matchingMechanicalOrders.length > 0
+
+        ) {
+
+          statusElement.className =
+            "status success";
+
+          statusElement.textContent =
+            "DVT prophylaxis documented.";
+
+        }
+
+        else {
+
+          statusElement.className =
+            "status warning";
+
+          statusElement.textContent =
+            "No DVT prophylaxis found.";
+
+        }
+
+
+        displayDvtResults(
+
+          matchingMedications,
+
+          matchingMechanicalOrders,
+
+          resultsElement
+
+        );
+
+      }
+
+      catch (error) {
+
+        console.error(
+          "DVT error:",
+          error
+        );
+
+        statusElement.className =
+          "status danger";
+
+        statusElement.textContent =
+          "Unable to retrieve DVT prophylaxis data.";
+
+      }
+
     }
 
-    function renderDvt(
-      medBundle,
-      srBundle
+
+    /*
+      ------------------------------------------------------
+      MEDICATION TEXT
+      ------------------------------------------------------
+    */
+
+    function getMedicationText(
+      medicationRequest
     ) {
-      const meds =
-        (medBundle.entry || [])
-          .map(entry => entry.resource);
 
-      const serviceRequests =
-        (srBundle.entry || [])
-          .map(entry => entry.resource);
+      const pieces = [];
 
-      const pharmMatch =
-        meds.find(med =>
-          matchesKeywords(
-            medicationText(med),
-            DVT_DRUG_KEYWORDS
-          )
-        );
 
-      const mechMatch =
-        serviceRequests.find(sr =>
-          matchesKeywords(
-            serviceRequestText(sr),
-            MECHANICAL_KEYWORDS
-          )
-        );
+      /*
+        Main medication text.
+      */
 
-      let statusClass;
-      let statusText;
-      let statusSub;
-
-      if (pharmMatch || mechMatch) {
-        statusClass = "ok";
-
-        statusText =
-          "DVT prophylaxis on record";
-
-        statusSub = pharmMatch
-          ? `Pharmacological: ${medicationText(pharmMatch)}`
-          : `Mechanical: ${serviceRequestText(mechMatch)}`;
-      }
-
-      else {
-        statusClass = "bad";
-
-        statusText =
-          "No DVT prophylaxis found";
-
-        statusSub =
-          "No matching medication or device order on record";
-      }
-
-      dvtContentEl.className = "";
-
-      dvtContentEl.innerHTML = `
-        <div
-          class="status-row ${statusClass}"
-          style="margin-top: 10px;"
-        >
-          <span class="status-dot"></span>
-
-          <div>
-            <div class="status-text">
-              ${statusText}
-            </div>
-
-            <div class="status-sub">
-              ${statusSub}
-            </div>
-          </div>
-        </div>
-
-        <div class="footer-note">
-          Checks for common prophylactic anticoagulants
-          and compression device orders.
-          Demo app — sandbox data only.
-          Not for clinical use.
-        </div>
-      `;
-    }
-
-    function matchesKeywords(
-      text,
-      keywords
-    ) {
-      if (!text) return false;
-
-      const lower =
-        text.toLowerCase();
-
-      return keywords.some(keyword =>
-        lower.includes(keyword)
-      );
-    }
-
-    function medicationText(med) {
-      if (!med) return "";
-
-      if (med.medicationCodeableConcept) {
-        return (
-          med.medicationCodeableConcept.text ||
-
-          (
-            med.medicationCodeableConcept.coding &&
-            med.medicationCodeableConcept.coding[0] &&
-            med.medicationCodeableConcept.coding[0].display
-          ) ||
-
-          ""
-        );
-      }
-
-      return "";
-    }
-
-    function serviceRequestText(sr) {
-      if (!sr) return "";
-
-      return (
-        sr.code &&
-        (
-          sr.code.text ||
-
-          (
-            sr.code.coding &&
-            sr.code.coding[0] &&
-            sr.code.coding[0].display
-          )
-        )
-      ) || "";
-    }
-
-    function formatName(patient) {
       if (
-        !patient.name ||
-        !patient.name.length
+        medicationRequest
+          .medicationCodeableConcept
+          ?.text
       ) {
-        return "Unknown patient";
+
+        pieces.push(
+
+          medicationRequest
+            .medicationCodeableConcept
+            .text
+
+        );
+
       }
 
-      const name =
-        patient.name.find(
-          item => item.use === "official"
-        ) ||
-        patient.name[0];
 
-      const given =
-        (name.given || []).join(" ");
+      /*
+        Coding displays.
+      */
 
-      return `
-        ${given}
-        ${name.family || ""}
-      `
-        .replace(/\s+/g, " ")
-        .trim();
+      const coding =
+
+        medicationRequest
+          .medicationCodeableConcept
+          ?.coding || [];
+
+
+      coding.forEach(code => {
+
+        if (code.display) {
+
+          pieces.push(
+            code.display
+          );
+
+        }
+
+      });
+
+
+      /*
+        Dosage text can sometimes include brand names.
+      */
+
+      const dosage =
+
+        medicationRequest
+          .dosageInstruction || [];
+
+
+      dosage.forEach(
+        instruction => {
+
+          if (instruction.text) {
+
+            pieces.push(
+              instruction.text
+            );
+
+          }
+
+
+          const additional =
+
+            instruction
+              .additionalInstruction ||
+            [];
+
+
+          additional.forEach(
+            item => {
+
+              if (item.text) {
+
+                pieces.push(
+                  item.text
+                );
+
+              }
+
+            });
+
+        });
+
+
+      return pieces.join(" ");
+
     }
+
+
+    /*
+      ------------------------------------------------------
+      SERVICE REQUEST TEXT
+      ------------------------------------------------------
+    */
+
+    function getServiceRequestText(
+      serviceRequest
+    ) {
+
+      const pieces = [];
+
+
+      if (
+        serviceRequest.code?.text
+      ) {
+
+        pieces.push(
+          serviceRequest.code.text
+        );
+
+      }
+
+
+      const coding =
+        serviceRequest
+          .code
+          ?.coding || [];
+
+
+      coding.forEach(code => {
+
+        if (code.display) {
+
+          pieces.push(
+            code.display
+          );
+
+        }
+
+      });
+
+
+      return pieces.join(" ");
+
+    }
+
+
+    /*
+      ------------------------------------------------------
+      DISPLAY DVT RESULTS
+      ------------------------------------------------------
+    */
+
+    function displayDvtResults(
+
+      medications,
+
+      mechanicalOrders,
+
+      container
+
+    ) {
+
+      container.innerHTML = "";
+
+
+      /*
+        Display matching medications.
+      */
+
+      if (medications.length > 0) {
+
+        const heading =
+          document.createElement("div");
+
+        heading.className =
+          "small-text";
+
+        heading.innerHTML =
+          "<strong>Anticoagulant medication found:</strong>";
+
+        container.appendChild(
+          heading
+        );
+
+
+        medications.forEach(
+          medication => {
+
+            const div =
+              document.createElement("div");
+
+            div.className =
+              "medication";
+
+
+            const name =
+              getMedicationText(
+                medication
+              );
+
+
+            const status =
+              medication.status ||
+              "unknown";
+
+
+            div.innerHTML = `
+
+              <strong>
+                ${name}
+              </strong>
+
+              <div class="small-text">
+
+                MedicationRequest status:
+                ${status}
+
+              </div>
+
+            `;
+
+
+            container.appendChild(div);
+
+          });
+
+      }
+
+
+      /*
+        Display matching mechanical prophylaxis.
+      */
+
+      if (
+        mechanicalOrders.length > 0
+      ) {
+
+        const heading =
+          document.createElement("div");
+
+        heading.className =
+          "small-text";
+
+        heading.style.marginTop =
+          "14px";
+
+        heading.innerHTML =
+          "<strong>Mechanical prophylaxis found:</strong>";
+
+        container.appendChild(
+          heading
+        );
+
+
+        mechanicalOrders.forEach(
+          request => {
+
+            const div =
+              document.createElement("div");
+
+            div.className =
+              "medication";
+
+
+            div.textContent =
+              getServiceRequestText(
+                request
+              );
+
+
+            container.appendChild(div);
+
+          });
+
+      }
+
+
+      /*
+        Nothing found.
+      */
+
+      if (
+
+        medications.length === 0 &&
+
+        mechanicalOrders.length === 0
+
+      ) {
+
+        container.innerHTML = `
+
+          <div class="small-text">
+
+            No matching anticoagulant medication or
+            mechanical compression order was found.
+
+          </div>
+
+        `;
+
+      }
+
+    }
+
+
+    /*
+      ------------------------------------------------------
+      FHIR BUNDLE HELPER
+      ------------------------------------------------------
+    */
+
+    function getBundleResources(response) {
+
+      if (!response) {
+        return [];
+      }
+
+
+      /*
+        Standard FHIR Bundle.
+      */
+
+      if (
+        response.resourceType ===
+        "Bundle"
+      ) {
+
+        return (
+
+          response.entry || []
+
+        )
+
+        .map(
+          entry => entry.resource
+        )
+
+        .filter(Boolean);
+
+      }
+
+
+      /*
+        fhirclient can sometimes return arrays depending
+        on request configuration.
+      */
+
+      if (Array.isArray(response)) {
+
+        return response;
+
+      }
+
+
+      return [];
+
+    }
+
   </script>
 
 </body>
