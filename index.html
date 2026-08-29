@@ -609,25 +609,11 @@
 
 
       let response;
-
       try {
-
-        response =
-          await client.patient.request(
-            "MedicationRequest?_count=100"
-          );
-
-      }
-
-      catch (error) {
-
-        console.error(
-          "MedicationRequest first page failed:",
-          error
-        );
-
-        return allMedications; // [] — nothing to salvage yet
-
+        response = await client.patient.request("MedicationRequest?_count=100");
+      } catch (error) {
+        console.error("MedicationRequest first page failed:", error);
+        throw error; // let the caller see and display this — don't swallow it here
       }
 
 
@@ -752,6 +738,8 @@
           results if a later page fails.
         */
 
+        let medicationFetchError = null;
+
         try {
 
           medications =
@@ -773,6 +761,8 @@
             "MedicationRequest error:",
             error
           );
+
+          medicationFetchError = error;
 
         }
 
@@ -967,7 +957,8 @@
           "Patient ID: " + client.patient.id + "\n" +
           "Total medications retrieved: " + medications.length + "\n" +
           "Matching DVT medications: " + matchingMedications.length + "\n" +
-          "Matching mechanical orders: " + matchingMechanicalOrders.length + "\n\n" +
+          "Matching mechanical orders: " + matchingMechanicalOrders.length + "\n" +
+          "Medication fetch error: " + (medicationFetchError ? (medicationFetchError.message || String(medicationFetchError)) : "none") + "\n\n" +
           "All medication texts retrieved:\n" +
           (medNamesList || "  (none)");
 
