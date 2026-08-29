@@ -208,7 +208,7 @@
     Promise.all([
       client.patient.read(),
       client.patient.request(
-        `Observation?code=${BP_CODES}&date=ge2026-08-24&_sort=-date&_count=20`
+        `Observation?code=${BP_CODES}&date=ge2026-08-27&_sort=-date&_count=20`
       )
     ])
       .then(([patient, obsBundle]) => {
