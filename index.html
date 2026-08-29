@@ -574,6 +574,106 @@
     }
 
 
+    /*
+      ------------------------------------------------------
+      MANUAL MEDICATION PAGINATION
+      ------------------------------------------------------
+
+      Cerner can return MedicationRequest history across
+      multiple pages using a Bundle "next" link.
+
+      This function follows every next link and combines
+      the results.
+    */
+
+    async function getAllMedicationRequests(client) {
+
+      let allMedications = [];
+
+      let page = 1;
+
+
+      let response =
+        await client.patient.request(
+          "MedicationRequest?_count=100"
+        );
+
+
+      while (response) {
+
+        const resources =
+          getBundleResources(response);
+
+
+        allMedications.push(
+          ...resources
+        );
+
+
+        console.log(
+          `Medication page ${page}:`,
+          resources.length
+        );
+
+
+        const nextLink =
+          response.link?.find(
+            link =>
+              link.relation === "next"
+          )?.url;
+
+
+        if (!nextLink) {
+
+          break;
+
+        }
+
+
+        /*
+          Safety limit so a strange server response
+          cannot create an infinite loop.
+        */
+
+        if (page >= 50) {
+
+          console.warn(
+            "Stopped after 50 medication pages."
+          );
+
+          break;
+
+        }
+
+
+        /*
+          Use client.request here because nextLink
+          is already a complete FHIR URL supplied
+          by Cerner.
+        */
+
+        response =
+          await client.request(
+            nextLink
+          );
+
+
+        page++;
+
+      }
+
+
+      console.log(
+        "TOTAL medications retrieved:",
+        allMedications.length
+      );
+
+
+      return allMedications;
+
+    }
+
+
     async function checkDvtProphylaxis(
       client
     ) {
@@ -601,53 +701,16 @@
           MEDICATION REQUESTS
           ---------------------------------
 
-          flat: true tells fhirclient to
-          return resources instead of Bundles.
-
-          pageLimit: 10 allows it to follow
-          multiple "next" links.
+          This now follows Cerner's pagination
+          manually.
         */
 
         try {
 
-          const medicationResponse =
-            await client.patient.request(
-
-              "MedicationRequest?_count=100",
-
-              {
-                flat: true,
-                pageLimit: 10
-              }
-
+          medications =
+            await getAllMedicationRequests(
+              client
             );
-
-
-          if (
-            Array.isArray(
-              medicationResponse
-            )
-          ) {
-
-            medications =
-              medicationResponse;
-
-          }
-
-          else {
-
-            medications =
-              getBundleResources(
-                medicationResponse
-              );
-
-          }
-
-
-          console.log(
-            "Total MedicationRequests:",
-            medications.length
-          );
 
 
           console.log(
@@ -672,51 +735,27 @@
           SERVICE REQUESTS
           ---------------------------------
 
-          Keep this separate.
-
-          ServiceRequest failing should not
-          prevent medications from being checked.
+          Keep this separate so failure here
+          does not prevent medication detection.
         */
 
         try {
 
           const serviceResponse =
             await client.patient.request(
-
-              "ServiceRequest?_count=100",
-
-              {
-                flat: true,
-                pageLimit: 10
-              }
-
+              "ServiceRequest?_count=100"
             );
 
 
-          if (
-            Array.isArray(
+          serviceRequests =
+            getBundleResources(
               serviceResponse
-            )
-          ) {
-
-            serviceRequests =
-              serviceResponse;
-
-          }
-
-          else {
-
-            serviceRequests =
-              getBundleResources(
-                serviceResponse
-              );
-
-          }
+            );
 
 
           console.log(
-            "Total ServiceRequests:",
-            serviceRequests.length
+            "ServiceRequests:",
+            serviceRequests
           );
 
         }
@@ -733,7 +772,7 @@
 
         /*
           ---------------------------------
-          FIND ANTICOAGULANTS
+          FIND ANTICOAGULANT MEDICATIONS
           ---------------------------------
         */
 
@@ -760,9 +799,9 @@
               if (matchedKeyword) {
 
                 console.log(
-                  "DVT medication match:",
+                  "DVT MEDICATION MATCH:",
                   matchedKeyword,
-                  text
+                  medication
                 );
 
               }
@@ -818,7 +857,7 @@
 
         /*
           ---------------------------------
-          RESULT
+          DISPLAY RESULT
           ---------------------------------
         */
 
@@ -1172,10 +1211,6 @@
 
     }
 
-
-    /*
-      Cleaner medication name for the UI.
-    */
 
     function getMedicationDisplayName(
       medication
