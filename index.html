@@ -159,7 +159,8 @@
 
   <script>
 
-    const BP_CODES = "85354-9,8480-6,8462-4";
+    const BP_CODES =
+      "85354-9,8480-6,8462-4";
 
 
     const DVT_DRUG_KEYWORDS = [
@@ -259,6 +260,7 @@
 
       const readingsElement =
         document.getElementById("bp-readings");
+
 
       try {
 
@@ -384,7 +386,9 @@
     }
 
 
-    function extractBpReadings(observations) {
+    function extractBpReadings(
+      observations
+    ) {
 
       const readings = [];
 
@@ -425,11 +429,8 @@
 
 
               if (
-
                 codes.includes("8480-6") &&
-
                 component.valueQuantity
-
               ) {
 
                 systolic =
@@ -441,11 +442,8 @@
 
 
               if (
-
                 codes.includes("8462-4") &&
-
                 component.valueQuantity
-
               ) {
 
                 diastolic =
@@ -461,11 +459,8 @@
 
 
         if (
-
           systolic !== null &&
-
           diastolic !== null
-
         ) {
 
           readings.push({
@@ -476,9 +471,6 @@
 
             timestamp:
               new Date(dt).getTime(),
-
-            date:
-              new Date(dt),
 
             time:
               new Date(dt)
@@ -582,7 +574,9 @@
     }
 
 
-    async function checkDvtProphylaxis(client) {
+    async function checkDvtProphylaxis(
+      client
+    ) {
 
       const statusElement =
         document.getElementById(
@@ -603,24 +597,57 @@
 
 
         /*
+          ---------------------------------
           MEDICATION REQUESTS
+          ---------------------------------
 
-          If this succeeds, we can still detect
-          anticoagulants even if ServiceRequest fails.
+          flat: true tells fhirclient to
+          return resources instead of Bundles.
+
+          pageLimit: 10 allows it to follow
+          multiple "next" links.
         */
 
         try {
 
           const medicationResponse =
             await client.patient.request(
-              "MedicationRequest?_count=100"
+
+              "MedicationRequest?_count=100",
+
+              {
+                flat: true,
+                pageLimit: 10
+              }
+
             );
 
 
-          medications =
-            getBundleResources(
+          if (
+            Array.isArray(
               medicationResponse
-            );
+            )
+          ) {
+
+            medications =
+              medicationResponse;
+
+          }
+
+          else {
+
+            medications =
+              getBundleResources(
+                medicationResponse
+              );
+
+          }
+
+
+          console.log(
+            "Total MedicationRequests:",
+            medications.length
+          );
 
 
           console.log(
@@ -641,29 +668,55 @@
 
 
         /*
+          ---------------------------------
           SERVICE REQUESTS
+          ---------------------------------
 
-          This is kept separate so a ServiceRequest
-          failure does not kill the medication check.
+          Keep this separate.
+
+          ServiceRequest failing should not
+          prevent medications from being checked.
         */
 
         try {
 
           const serviceResponse =
             await client.patient.request(
-              "ServiceRequest?_count=100"
+
+              "ServiceRequest?_count=100",
+
+              {
+                flat: true,
+                pageLimit: 10
+              }
+
             );
 
 
-          serviceRequests =
-            getBundleResources(
+          if (
+            Array.isArray(
               serviceResponse
-            );
+            )
+          ) {
+
+            serviceRequests =
+              serviceResponse;
+
+          }
+
+          else {
+
+            serviceRequests =
+              getBundleResources(
+                serviceResponse
+              );
+
+          }
 
 
           console.log(
-            "ServiceRequests:",
-            serviceRequests
+            "Total ServiceRequests:",
+            serviceRequests.length
           );
 
         }
@@ -679,7 +732,9 @@
 
 
         /*
-          MATCH MEDICATIONS
+          ---------------------------------
+          FIND ANTICOAGULANTS
+          ---------------------------------
         */
 
         const matchingMedications =
@@ -693,17 +748,28 @@
                 ).toLowerCase();
 
 
-              console.log(
-                "Checking medication:",
-                text
-              );
+              const matchedKeyword =
+                DVT_DRUG_KEYWORDS.find(
+                  keyword =>
+                    text.includes(
+                      keyword.toLowerCase()
+                    )
+                );
 
 
-              return DVT_DRUG_KEYWORDS.some(
-                keyword =>
-                  text.includes(
-                    keyword.toLowerCase()
-                  )
+              if (matchedKeyword) {
+
+                console.log(
+                  "DVT medication match:",
+                  matchedKeyword,
+                  text
+                );
+
+              }
+
+
+              return Boolean(
+                matchedKeyword
               );
 
             }
@@ -711,7 +777,9 @@
 
 
         /*
-          MATCH MECHANICAL PROPHYLAXIS
+          ---------------------------------
+          FIND MECHANICAL PROPHYLAXIS
+          ---------------------------------
         */
 
         const matchingMechanicalOrders =
@@ -749,7 +817,9 @@
 
 
         /*
+          ---------------------------------
           RESULT
+          ---------------------------------
         */
 
         if (
@@ -862,7 +932,9 @@
       dosage.forEach(
         instruction => {
 
-          if (instruction.text) {
+          if (
+            instruction.text
+          ) {
 
             pieces.push(
               instruction.text
@@ -954,7 +1026,9 @@
       container.innerHTML = "";
 
 
-      if (medications.length > 0) {
+      if (
+        medications.length > 0
+      ) {
 
         const heading =
           document.createElement("div");
@@ -982,7 +1056,7 @@
 
 
             const name =
-              getMedicationText(
+              getMedicationDisplayName(
                 medication
               );
 
@@ -990,6 +1064,14 @@
             const status =
               medication.status ||
               "unknown";
+
+
+            const authoredOn =
+              medication.authoredOn
+                ? new Date(
+                    medication.authoredOn
+                  ).toLocaleString()
+                : "Unknown";
 
 
             div.innerHTML = `
@@ -1000,8 +1082,15 @@
 
               <div class="small-text">
 
-                MedicationRequest status:
+                Status:
                 ${status}
+
+              </div>
+
+              <div class="small-text">
+
+                Ordered:
+                ${authoredOn}
 
               </div>
 
@@ -1084,7 +1173,54 @@
     }
 
 
-    function getBundleResources(response) {
+    /*
+      Cleaner medication name for the UI.
+    */
+
+    function getMedicationDisplayName(
+      medication
+    ) {
+
+      if (
+        medication
+          .medicationCodeableConcept
+          ?.text
+      ) {
+
+        return medication
+          .medicationCodeableConcept
+          .text;
+
+      }
+
+
+      const coding =
+        medication
+          .medicationCodeableConcept
+          ?.coding || [];
+
+
+      const display =
+        coding.find(
+          code => code.display
+        );
+
+
+      if (display) {
+
+        return display.display;
+
+      }
+
+
+      return "Anticoagulant medication";
+
+    }
+
+
+    function getBundleResources(
+      response
+    ) {
 
       if (!response) {
         return [];
@@ -1111,7 +1247,9 @@
       }
 
 
-      if (Array.isArray(response)) {
+      if (
+        Array.isArray(response)
+      ) {
 
         return response;
 
