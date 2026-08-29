@@ -153,6 +153,8 @@
 
       <div id="dvt-results"></div>
 
+      <div id="dvt-debug" class="small-text" style="margin-top:16px; padding-top:16px; border-top:1px dashed #d1d5db; white-space:pre-wrap; font-family:monospace; font-size:12px;"></div>
+
     </div>
 
   </div>
@@ -943,6 +945,32 @@
 
         );
 
+
+        /*
+          ---------------------------------
+          VISIBLE ON-PAGE DEBUG INFO
+          ---------------------------------
+          Same data as the console logs, but shown directly
+          on the page so it's easy to screenshot.
+        */
+
+        const debugEl =
+          document.getElementById("dvt-debug");
+
+        const medNamesList =
+          medications
+            .map(m => "  - " + getMedicationText(m))
+            .join("\n");
+
+        debugEl.textContent =
+          "DEBUG INFO\n" +
+          "Patient ID: " + client.patient.id + "\n" +
+          "Total medications retrieved: " + medications.length + "\n" +
+          "Matching DVT medications: " + matchingMedications.length + "\n" +
+          "Matching mechanical orders: " + matchingMechanicalOrders.length + "\n\n" +
+          "All medication texts retrieved:\n" +
+          (medNamesList || "  (none)");
+
       }
 
       catch (error) {
@@ -957,6 +985,13 @@
 
         statusElement.textContent =
           "Unable to retrieve DVT prophylaxis data.";
+
+
+        const debugEl =
+          document.getElementById("dvt-debug");
+
+        debugEl.textContent =
+          "DEBUG INFO\nERROR: " + (error && error.message ? error.message : String(error));
 
       }
 
