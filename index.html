@@ -210,15 +210,9 @@
   <script src="https://cdn.jsdelivr.net/npm/fhirclient/build/fhir-client.js"></script>
 
   <script>
-    // BP-related LOINC codes
-    // 85354-9 = BP panel
-    // 8480-6 = systolic
-    // 8462-4 = diastolic
     const BP_CODES = "85354-9,8480-6,8462-4";
-
     const REQUIRED_CHECKS_PER_DAY = 2;
 
-    // DVT medication keywords
     const DVT_DRUG_KEYWORDS = [
       "enoxaparin",
       "lovenox",
@@ -229,7 +223,6 @@
       "fragmin"
     ];
 
-    // Mechanical prophylaxis keywords
     const MECHANICAL_KEYWORDS = [
       "sequential compression",
       "scd",
@@ -248,7 +241,6 @@
     FHIR.oauth2.ready()
       .then(client => {
         window.smartClient = client;
-
         loadData();
         loadDvtData();
       })
@@ -273,7 +265,6 @@
       Promise.all([
         client.patient.read(),
 
-        // Fetch BP observations without relying on Cerner's date filter.
         client.patient.request(
           `Observation?code=${BP_CODES}&_sort=-date&_count=100`
         )
@@ -294,15 +285,10 @@
       const entries =
         (obsBundle.entry || []).map(entry => entry.resource);
 
-      /*
-        Exact rolling 24-hour cutoff.
-
-        Example:
-        If current time = Aug 28 at 7:00 PM,
-        cutoff = Aug 27 at 7:00 PM.
-      */
+      // TEMP TEST:
+      // Keep readings from the last 7 days.
       const cutoff =
-        Date.now() - 24 * 60 * 60 * 1000;
+        Date.now() - 7 * 24 * 60 * 60 * 1000;
 
       const recentEntries = entries.filter(obs => {
         const dt =
@@ -322,8 +308,6 @@
         return observationTime >= cutoff;
       });
 
-      // Group readings that occurred within the same
-      // five-minute period.
       const readings =
         groupIntoReadings(recentEntries);
 
@@ -337,7 +321,7 @@
         statusClass = "ok";
 
         statusText =
-          `${count} of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 24 hours`;
+          `${count} of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 7 days`;
 
         statusSub =
           "Requirement met";
@@ -347,7 +331,7 @@
         statusClass = "bad";
 
         statusText =
-          `0 of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 24 hours`;
+          `0 of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 7 days`;
 
         statusSub =
           "No readings yet — action needed";
@@ -357,7 +341,7 @@
         statusClass = "warn";
 
         statusText =
-          `${count} of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 24 hours`;
+          `${count} of ${REQUIRED_CHECKS_PER_DAY} BP checks in the last 7 days`;
 
         const remaining =
           REQUIRED_CHECKS_PER_DAY - count;
@@ -380,7 +364,7 @@
 
           : `
               <div class="empty">
-                No readings recorded in the last 24 hours.
+                No readings recorded in the last 7 days.
               </div>
             `;
 
@@ -411,7 +395,7 @@
 
         <div class="readings">
           <div class="readings-title">
-            Readings in the last 24 hours
+            Readings in the last 7 days
           </div>
 
           ${readingsHtml}
@@ -434,17 +418,13 @@
 
       Promise.all([
         client.patient
-          .request(
-            `MedicationRequest?_count=50`
-          )
+          .request(`MedicationRequest?_count=50`)
           .catch(() => ({
             entry: []
           })),
 
         client.patient
-          .request(
-            `ServiceRequest?_count=50`
-          )
+          .request(`ServiceRequest?_count=50`)
           .catch(() => ({
             entry: []
           }))
@@ -621,12 +601,6 @@
     }
 
     function groupIntoReadings(observations) {
-      /*
-        Bucket observations into 5-minute windows.
-
-        This prevents a systolic + diastolic pair
-        from being counted as two separate BP checks.
-      */
       const buckets = new Map();
 
       observations.forEach(obs => {
@@ -693,8 +667,6 @@
     }
 
     function describeObservation(obs) {
-      // BP panel containing both systolic
-      // and diastolic components
       if (
         obs.component &&
         obs.component.length
@@ -716,7 +688,6 @@
           .join(" / ");
       }
 
-      // Individual systolic or diastolic observation
       if (obs.valueQuantity) {
         const label =
           (
